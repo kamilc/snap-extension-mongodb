@@ -51,6 +51,7 @@ import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Trans
 import           Control.Monad.Reader
+import           Control.Monad.Error
 
 import           Data.ByteString.Internal (c2w, w2c)
 import qualified Data.ByteString as B
@@ -67,6 +68,7 @@ import           Data.Time
 
 import           Database.MongoDB
 import           Database.MongoDB as DB
+import           Database.MongoDB.Query (Database)
 
 import           Numeric (showHex, readHex)
 import           Safe
@@ -77,6 +79,8 @@ import           Snap.Extension
 
 import           Snap.Extension.DB.MongoDB.Instances
 import           Snap.Extension.DB.MongoDB.Utils
+
+import           System.IO.Pool
 
 
 -- $monadauth
@@ -94,14 +98,14 @@ class MonadIO m => MonadMongoDB m where
 
   ----------------------------------------------------------------------------
   -- | Run given MongoDB action against the database
-  withDB       :: ReaderT Database (Action IO) a -> m (Either Failure a)
-  withDBUnsafe :: ReaderT Database (Action IO) a -> m (Either Failure a)
+  withDB       :: Action IO a -> m (Either Failure a)
+  withDBUnsafe :: Action IO a -> m (Either Failure a)
 
 
 
   ----------------------------------------------------------------------------
   -- | Same as 'withDB' but calls 'error' if there is an exception
-  withDB' :: ReaderT Database (Action IO) a -> m a
+  withDB' :: Action IO a -> m a
   withDB' run = do
     r <- withDB run 
     either (error . show) return r
@@ -117,7 +121,7 @@ class MonadIO m => MonadMongoDB m where
 
 -- | MongoDB State
 data MongoDBState = MongoDBState
-    { connPool :: ConnPool Host
+    { connPool :: Pool IOError Pipe
     , appDatabase :: Database
     }
 
@@ -140,16 +144,28 @@ mongoDBInitializer :: Host
                    -> Initializer MongoDBState
 mongoDBInitializer h n db = do
   mongoState <- liftIO $ do
-    pool <- newConnPool n h
-    return $ MongoDBState pool (Database db)
+    pool <- newPool (factoryForHost h) n
+    return $ MongoDBState pool (db)
   mkInitializer mongoState
+  where
+    factoryForHost :: Host -> Factory IOError Pipe
+    factoryForHost host = Factory (newRes h) (killRes) (isResExpired)
+    
+    newRes :: Host -> ErrorT IOError IO Pipe
+    newRes = undefined
+    
+    killRes :: Pipe -> IO ()
+    killRes = undefined
+    
+    isResExpired :: Pipe -> IO Bool
+    isResExpired = undefined
 
 
 ------------------------------------------------------------------------------
 -- |
 instance InitializerState MongoDBState where
   extensionId = const "MongoDB/MongoDB"
-  mkCleanup s = killPipes $ connPool s
+  mkCleanup s = killAll $ connPool s
   mkReload = const $ return ()
 
 
@@ -158,11 +174,19 @@ instance InitializerState MongoDBState where
 instance HasMongoDBState s => MonadMongoDB (SnapExtend s) where
   withDB run = do
     (MongoDBState pool db) <- asks getMongoDBState
-    liftIO . access safe Master pool $ use db run
+    epipe <- liftIO $ runErrorT $ aResource pool
+    case epipe of
+      Left err -> return $ Left $ ConnectionFailure err
+      Right pipe -> do
+		liftIO (access pipe master db run)
 
   withDBUnsafe run = do
     (MongoDBState pool db) <- asks getMongoDBState
-    liftIO . access Unsafe Master pool $ use db run
+    epipe <- liftIO $ runErrorT $ aResource pool
+    case epipe of
+      Left err -> return $ Left $ ConnectionFailure err
+      Right pipe -> do
+		liftIO (access pipe UnconfirmedWrites db run)
 
 
 ------------------------------------------------------------------------------

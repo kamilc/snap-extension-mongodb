@@ -57,6 +57,7 @@ import Control.Monad
 import Data.Maybe
 
 import Database.MongoDB hiding (Selector)
+import Control.Monad.MVar
 import Data.Bson
 import Data.Typeable
 import Data.Monoid hiding (Product)
@@ -234,41 +235,41 @@ toDocList = map toDoc
 
 -- Insert
 
-insertADT :: (Regular a, ToDoc (PF a), DbAccess m) => Collection -> a -> m Value
+insertADT :: (Regular a, ToDoc (PF a), MonadControlIO m, Functor m, Applicative m) => Collection -> a -> Action m Value
 insertADT c = insert c . toDoc
 
-insertADT_ :: (Regular a, ToDoc (PF a), DbAccess m) => Collection -> a -> m ()
+insertADT_ :: (Regular a, ToDoc (PF a), MonadControlIO m, Functor m, Applicative m) => Collection -> a -> Action m ()
 insertADT_ c adt = insertADT c adt >> return ()
 
-insertManyADT :: (Regular a, ToDoc (PF a), DbAccess m) => Collection -> [a] -> m [Value]
+insertManyADT :: (Regular a, ToDoc (PF a), MonadControlIO m, Functor m, Applicative m) => Collection -> [a] -> Action m [Value]
 insertManyADT c = insertMany c . map toDoc
 
-insertManyADT_ :: (Regular a, ToDoc (PF a), DbAccess m) => Collection -> [a] -> m ()
+insertManyADT_ :: (Regular a, ToDoc (PF a), MonadControlIO m, Functor m, Applicative m) => Collection -> [a] -> Action m ()
 insertManyADT_ c adts = insertManyADT c adts >> return ()
 
 -- Update
 
-saveADT :: (Regular a, ToDoc (PF a), DbAccess m) => Collection -> a -> m ()
+saveADT :: (Regular a, ToDoc (PF a), MonadControlIO m, Functor m, Applicative m) => Collection -> a -> Action m ()
 saveADT c adt = save c $ toDoc adt
 
-replaceADT :: (Regular a, ToDoc (PF a), DbAccess m) => Selection -> a -> m () -- perhaps replaceWithADT would be better?
+replaceADT :: (Regular a, ToDoc (PF a), MonadControlIO m, Functor m, Applicative m) => Selection -> a -> Action m () -- perhaps replaceWithADT would be better?
 replaceADT s adt = replace s $ toDoc adt
 
-repsertADT :: (Regular a, ToDoc (PF a), DbAccess m) => Selection -> a -> m () -- perhaps repsertWithADT would be better?
+repsertADT :: (Regular a, ToDoc (PF a), MonadControlIO m, Functor m, Applicative m) => Selection -> a -> Action m () -- perhaps repsertWithADT would be better?
 repsertADT s adt = repsert s $ toDoc adt
 
 --
 
-restADT :: (Regular a, FromDoc (PF a), DbAccess m) => Cursor -> m [a]
+restADT :: (Regular a, FromDoc (PF a), MonadControlIO m, Functor m, Applicative m) => Cursor -> Action m [a]
 restADT c = rest c >>= return . fromDocList
 
-nextNADT :: (Regular a, FromDoc (PF a), DbAccess m) => Int -> Cursor -> m [a]
+nextNADT :: (Regular a, FromDoc (PF a), MonadControlIO m, Functor m, Applicative m) => Int -> Cursor -> Action m [a]
 nextNADT n c = nextN n c >>= return . fromDocList
 
-nextADT :: (Regular a, FromDoc (PF a), DbAccess m) => Cursor -> m (Maybe a)
+nextADT :: (Regular a, FromDoc (PF a), MonadControlIO m, Functor m, Applicative m) => Cursor -> Action m (Maybe a)
 nextADT c = next c >>= return . (maybe Nothing fromDoc)
 
-groupADT :: (Regular a, FromDoc (PF a), DbAccess m) => Group -> m [a]
+groupADT :: (Regular a, FromDoc (PF a), MonadControlIO m, Functor m, Applicative m) => Group -> Action m [a]
 groupADT g = group g >>= return . fromDocList
 
 
