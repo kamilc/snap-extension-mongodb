@@ -152,13 +152,13 @@ mongoDBInitializer h n db = do
     factoryForHost host = Factory (newRes h) (killRes) (isResExpired)
     
     newRes :: Host -> ErrorT IOError IO Pipe
-    newRes = undefined
+    newRes = connect
     
     killRes :: Pipe -> IO ()
-    killRes = undefined
+    killRes = close
     
     isResExpired :: Pipe -> IO Bool
-    isResExpired = undefined
+    isResExpired = isClosed
 
 
 ------------------------------------------------------------------------------
